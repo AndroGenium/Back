@@ -122,5 +122,21 @@ namespace Backend.Controllers
 
             return Ok(Responses);
         }
+
+        [HttpPut("edit-product-by-id")]
+
+        public ActionResult EditProduct(int ProductId, EditProduct InfoToBeSwapped)
+        {
+            var product = _db.Products.FirstOrDefault(p => p.Id == ProductId);
+            if (product != null)
+            {
+               return Ok(product);
+                
+            }
+            else
+            {
+                return Conflict(new ApiResponse(ErrorCodes.ProductNotFound, "Product not found", ModelState));
+            }
+        }
     }
 }

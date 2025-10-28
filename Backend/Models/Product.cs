@@ -5,9 +5,6 @@
         private static readonly Random _rand = new Random();
 
 
-
-
-
         public int Id { get; set; }
         public string Name { get; set; }    
         public string Category { get; set; }

@@ -21,6 +21,7 @@
         public const string InvalidPassword = "AUTH_001";
         public const string ServerError = "SYS_001";
         public const string UserNotFound = "USR_002";
+        public const string ProductNotFound = "PRO_001";
          
     }
 
