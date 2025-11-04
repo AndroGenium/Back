@@ -16,7 +16,6 @@ namespace Backend.Requests
         public int? BorrowerId { get; set; }
         public List<int>? LikedByUserIds { get; set; }
         public List<string>? ImageUrls { get; set; }
-        public List<int>? ReviewIds { get; set; }
 
     }
 }

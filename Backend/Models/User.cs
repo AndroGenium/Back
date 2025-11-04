@@ -1,27 +1,37 @@
 ﻿namespace Backend.Models;
 using Backend.Enums;
 using Microsoft.OpenApi.Any;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 public class User
 {
     //Auth
+
+    [Key]
     public int Id { get; set; }
+
+    [Required, EmailAddress]
     public string Email { get; set; } // <---
 
+    [Required]
     public string FirstName { get; set; }
 
+    [Required]
     public string LastName { get; set; }
 
     public string? PhoneNumber { get; set; }
 
-    private string _password;
+    public string VerificationCode { get; set; }
+    public DateTime? VerificationCodeExpiry { get; set; }
+
+    [Required]
+    public string PasswordHash { get; private set; }
+
+    [NotMapped]
     public string Password
     {
-        get => "User Password";
-        set
-        {
-            _password = HashPass(value);
-        }
+        set => PasswordHash = BCrypt.Net.BCrypt.HashPassword(value);
     }
 
     //Profile
@@ -53,7 +63,6 @@ public class User
     public List<Product>? ListedProducts { get; set; }
     public List<Product>? BorrowedProducts { get; set; }
     public List<Product>? LikedProducts { get; set; }
-    public List<Review>? Reviews { get; set; }
 
     //
 
@@ -66,11 +75,7 @@ public class User
 
     public bool VerifyPass(string input)
     {
-        return BCrypt.Net.BCrypt.Verify(input, _password);
+        return BCrypt.Net.BCrypt.Verify(input, PasswordHash);
     }
 
-    public string HashPass(string input)
-    {
-        return BCrypt.Net.BCrypt.HashPassword(input);
-    }
 }

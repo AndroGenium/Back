@@ -7,7 +7,6 @@ namespace Backend.Data
     {
         public DbSet<User> Users { get; set; }
         public DbSet<Product> Products { get; set; }
-        public DbSet<Review> Reviews { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -42,19 +41,6 @@ namespace Backend.Data
                 .WithMany(p => p.LikedByUsers)
                 .UsingEntity(j => j.ToTable("UserLikedProducts"));
 
-            // USER → REVIEW (one-to-many)
-            modelBuilder.Entity<Review>()
-                .HasOne(r => r.User)
-                .WithMany(u => u.Reviews)
-                .HasForeignKey(r => r.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // PRODUCT → REVIEW (one-to-many)
-            modelBuilder.Entity<Review>()
-                .HasOne(r => r.Product)
-                .WithMany(p => p.Reviews)
-                .HasForeignKey(r => r.ProductId)
-                .OnDelete(DeleteBehavior.Cascade);
         }
 
     }

@@ -1,10 +1,11 @@
 ﻿using Backend.Data;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Backend.Requests;
 using Backend.Models;
+using Backend.Requests;
 using Backend.Responses;
 using Backend.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Backend.Controllers
 {
@@ -26,7 +27,7 @@ namespace Backend.Controllers
             return Ok(_db.Users);
         }
 
-        [HttpGet("get-user-by-id")]
+        [HttpGet("get-user-by-id/{id}")]
         public ActionResult GetUser(int id)
         {
             Baza db =new Baza();
@@ -34,68 +35,25 @@ namespace Backend.Controllers
             return Ok(_db.Users.FirstOrDefault(x => x.Id == id));
         }
 
-
-        [HttpPost("add-user")]
-        public ActionResult AddUser(AddUser RequestInfo)
+        [HttpPost("merge-likes/{userId}")]
+        public IActionResult MergeLikes(int userId, [FromBody] List<int> productIds)
         {
-            if (!ModelState.IsValid)
+            var user = _db.Users.Include(u => u.LikedProducts).FirstOrDefault(u => u.Id == userId);
+            if (user == null) return NotFound();
+
+            var products = _db.Products.Where(p => productIds.Contains(p.Id)).ToList();
+
+            foreach (var product in products)
             {
-                return BadRequest(ModelState);
+                if (!user.LikedProducts.Contains(product))
+                    user.LikedProducts.Add(product);
             }
 
-            if (_db.Users.Any(u => u.Email == RequestInfo.Email))
-            {
-                return Conflict(new ApiResponse(ErrorCodes.EmailInUse,"Email Is In Use", ModelState));
-            }
-           
-
-            var UserToAdd = new User
-            {
-                FirstName = RequestInfo.FirstName,
-                LastName = RequestInfo.LastName,
-                Password = RequestInfo.password,
-                Email = RequestInfo.Email,
-                DateOfBirth = _dateformater.ConvertFormatToTime(RequestInfo.BirthDate),
-                DateCreated = DateTime.Now,
-            };
-
-            _db.Users.Add(UserToAdd);
             _db.SaveChanges();
-
-            return Ok(UserToAdd);
-            
+            return Ok(user.LikedProducts);
         }
 
-        [HttpPost("add-multiple-users")]
 
-        public ActionResult AddMultipleUsers(List<AddUser> UsersInfo)
-        {
-            List<User> UsersToAdd = new List<User>();
-            foreach (var RequestInfo in UsersInfo)
-            {
-                if (!ModelState.IsValid)
-                {
-                    return BadRequest(ModelState);
-                }
-                if (_db.Users.Any(u => u.Email == RequestInfo.Email))
-                {
-                    return Conflict(new ApiResponse(ErrorCodes.EmailInUse,"Email Is In Use", ModelState));
-                }
-                var UserToAdd = new User
-                {
-                    FirstName = RequestInfo.FirstName,
-                    LastName = RequestInfo.LastName,
-                    Password = RequestInfo.password,
-                    Email = RequestInfo.Email,
-                    DateOfBirth = _dateformater.ConvertFormatToTime(RequestInfo.BirthDate),
-                    DateCreated = DateTime.Now,
-                };
-                UsersToAdd.Add(UserToAdd);
-            }
-            _db.Users.AddRange(UsersToAdd);
-            _db.SaveChanges();
-            return Ok(UsersToAdd);
-        }
 
     }
 }

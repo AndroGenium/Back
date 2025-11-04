@@ -32,7 +32,7 @@ namespace Backend.Controllers
 
             var user = _db.Users.FirstOrDefault(u => u.Id == info.LenderId);
             if (user == null)
-                return Conflict(new ApiResponse(ErrorCodes.UserNotFound,"User not found", ModelState));
+                return Conflict(new ApiResponse(ErrorCodes.UserNotFound, "User not found", ModelState));
 
 
             var producttoadd = new Product
@@ -40,15 +40,15 @@ namespace Backend.Controllers
                 Name = info.Name,
                 Category = info.Category,
             };
-            if (info.Description != null) 
+            if (info.Description != null)
                 producttoadd.Description = info.Description;
 
             producttoadd.IsDonateable = info.IsDonateable;
             producttoadd.LenderId = info.LenderId;
 
             producttoadd.Lender = _db.Users.FirstOrDefault(user => user.Id == info.LenderId);
-            
-            if(info.ImageUrls != null)
+
+            if (info.ImageUrls != null)
                 producttoadd.ImageUrls = info.ImageUrls;
 
 
@@ -70,73 +70,35 @@ namespace Backend.Controllers
             return Ok(Response);
         }
 
-        [HttpPost("add-multiple-products")]
 
-        public ActionResult AddMultipleProducts(List<AddProduct> ProductsInfo)
-        {
-            var ProductsToAdd = new List<Product>();
-            var Responses = new List<AddProductResponse>();
-
-            foreach(var info in ProductsInfo)
-            {
-                if (!ModelState.IsValid)
-                    return BadRequest(ModelState);
-
-                var user = _db.Users.FirstOrDefault(u => u.Id == info.LenderId);
-                if (user == null)
-                    return Conflict(new ApiResponse(ErrorCodes.UserNotFound, "User not found", ModelState));
-
-                var producttoadd = new Product
-                {
-                    Name = info.Name,
-                    Category = info.Category,
-                };
-                if (info.Description != null)
-                    producttoadd.Description = info.Description;
-
-                producttoadd.IsDonateable = info.IsDonateable;
-                producttoadd.LenderId = info.LenderId;
-
-                producttoadd.Lender = _db.Users.FirstOrDefault(user => user.Id == info.LenderId);
-
-                if (info.ImageUrls != null)
-                    producttoadd.ImageUrls = info.ImageUrls;
-
-                ProductsToAdd.Add(producttoadd);
-            }
-            _db.Products.AddRange(ProductsToAdd);
-            _db.SaveChanges();
-
-            Responses = ProductsToAdd.Select(p => new AddProductResponse
-            {
-                Id = p.Id,
-                Name = p.Name,
-                Category = p.Category,
-                Description = p.Description,
-                IsDonateable = p.IsDonateable,
-                LenderId = p.LenderId,
-                ImageUrls = p.ImageUrls,
-                Views = p.Views
-
-            }).ToList();
-
-            return Ok(Responses);
-        }
-
-        [HttpPut("edit-product-by-id")]
-
-        public ActionResult EditProduct(int ProductId, EditProduct InfoToBeSwapped)
+        [HttpPatch("edit-product-by-id/{ProductId}")]
+        public ActionResult EditProduct(int ProductId, EditProduct info)
         {
             var product = _db.Products.FirstOrDefault(p => p.Id == ProductId);
-            if (product != null)
+            if (product == null)
+                return NotFound(new ApiResponse(ErrorCodes.ProductNotFound, "Product not found", ModelState));
+
+            // Apply updates if values are not null
+            product.Name ??= info.Name;
+            product.Category ??= info.Category;
+            product.Description ??= info.Description;
+            product.Views = info.Views ?? product.Views;
+            product.IsDonateable = info.IsDonateable ?? product.IsDonateable;
+            product.IsAvailable = info.IsAvailable ?? product.IsAvailable;
+            product.MoneyRaised = info.MoneyRaised ?? product.MoneyRaised;
+            product.LenderId = info.LenderId ?? product.LenderId;
+            product.BorrowerId = info.BorrowerId ?? product.BorrowerId;
+            product.ImageUrls ??= info.ImageUrls;
+
+            if (info.LikedByUserIds != null)
             {
-               return Ok(product);
-                
+                product.LikedByUsers = _db.Users
+                    .Where(u => info.LikedByUserIds.Contains(u.Id))
+                    .ToList();
             }
-            else
-            {
-                return Conflict(new ApiResponse(ErrorCodes.ProductNotFound, "Product not found", ModelState));
-            }
+
+            _db.SaveChanges();
+            return Ok(product);
         }
     }
 }

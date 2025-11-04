@@ -25,7 +25,7 @@
 
         public List<User>? LikedByUsers { get; set; }
         public List<string>? ImageUrls { get; set; }
-        public List<Review>? Reviews { get; set; }
+
 
 
 
