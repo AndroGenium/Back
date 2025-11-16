@@ -1,10 +1,11 @@
 ﻿using Backend.Data;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Backend.Requests;
 using Backend.Models;
+using Backend.Requests;
 using Backend.Responses;
 using Backend.Responses.ProductResponses;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Backend.Controllers
 {
@@ -99,6 +100,14 @@ namespace Backend.Controllers
 
             _db.SaveChanges();
             return Ok(product);
+        }
+
+        [HttpPost("borrow")]
+        [Authorize(Roles = "User,Admin")] // ← Only Users and Admins
+        public async Task<IActionResult> BorrowTool([FromBody] string request)
+        {
+            // Borrow logic
+            return Ok();
         }
     }
 }

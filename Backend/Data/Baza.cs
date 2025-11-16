@@ -8,6 +8,8 @@ namespace Backend.Data
         public DbSet<User> Users { get; set; }
         public DbSet<Product> Products { get; set; }
 
+        public DbSet<PendingUser> PendingUsers { get; set; }
+
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             // This method is ONLY for configuring the database connection

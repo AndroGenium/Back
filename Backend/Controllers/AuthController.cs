@@ -1,13 +1,18 @@
 ﻿using Azure.Core;
+using Backend.Extensions;
 using Backend.Data;
+using Backend.Enums;
 using Backend.Models;
 using Backend.Requests;
 using Backend.Responses;
 using Backend.Services;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using RegisterRequest = Backend.Requests.RegisterRequest;
 
 namespace Backend.Controllers
 {
@@ -18,96 +23,161 @@ namespace Backend.Controllers
         private readonly Baza _db;
         private readonly ProcessDateInfo _dateformater;
         private readonly EmailService _emailService;
+        private readonly JwtService _jwtService;
 
-        public AuthController(Baza db, ProcessDateInfo dateformater, EmailService emailService)
+        public AuthController(Baza db, ProcessDateInfo dateformater, EmailService emailService, JwtService jwtService)
         {
             _db = db;
             _dateformater = dateformater;
             _emailService = emailService;
+            _jwtService = jwtService;
         }
 
         [HttpPost("register-user")]
-        public ActionResult AddUser([FromBody] AddUser RequestInfo)
+        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
+            // 1. Validate input
+            if (string.IsNullOrEmpty(request.Email) || string.IsNullOrEmpty(request.Password))
+                return BadRequest(new { Message = "Email and password are required" });
 
-            if (_db.Users.Any(u => u.Email == RequestInfo.Email))
-            {
-                return Conflict(new ApiResponse(ErrorCodes.EmailInUse, "Email Is In Use", ModelState));
-            }
+            // 2. Check if email already exists in verified users
+            var existingUser = await _db.Users
+                .FirstOrDefaultAsync(u => u.Email == request.Email && u.IsVerified);
 
+            if (existingUser != null)
+                return BadRequest(new { Message = "Email already registered" });
+
+            // 3. Generate 6-digit code
             var verificationCode = new Random().Next(100000, 999999).ToString();
 
-            var UserToAdd = new User
+            // 4. Store PENDING user data temporarily (NOT in main Users table yet!)
+            // Option A: Use a PendingUsers table
+            var pendingUser = new PendingUser
             {
-                FirstName = RequestInfo.FirstName,
-                LastName = RequestInfo.LastName,
-                Password = RequestInfo.password,
-                Email = RequestInfo.Email,
-                DateOfBirth = _dateformater.ConvertFormatToTime(RequestInfo.BirthDate),
-                DateCreated = DateTime.Now,
-                VerificationCode = verificationCode,
-                VerificationCodeExpiry = DateTime.UtcNow.AddMinutes(30)
+                FirstName = request.FirstName,
+                LastName = request.LastName,
+                Email = request.Email,
+                BirthDate = _dateformater.ConvertFormatToTime(request.BirthDate),
             };
 
-            _db.Users.Add(UserToAdd);
-            _db.SaveChanges();
+            pendingUser.SetPassword(request.Password);
+            pendingUser.VerificationCode = verificationCode;
+            pendingUser.VerificationCodeExpiry = DateTime.UtcNow.AddMinutes(15);
+            pendingUser.DateCreated = DateTime.UtcNow;
 
-            _emailService.SendEMailConfirmation(UserToAdd.Email, verificationCode);
 
-            return Ok(new ApiResponse("USR401", "\"User created. Check your email to verify your account.\"", UserToAdd));
+            await _db.PendingUsers.AddAsync(pendingUser);
+            await _db.SaveChangesAsync();
 
+            // 5. Send verification email
+            await _emailService.SendEmailConfirmation(request.Email, verificationCode);
+
+            // 6. Return success (NO account created yet!)
+            return Ok(new { Message = "Verification code sent to your email" });
         }
 
-        [HttpPost("login-user")]
-        public ActionResult LoginUser([FromBody] LoginRequest request)
-        {
-            if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
-                return BadRequest("Email and password are required.");
+        
 
-            var user = _db.Users.FirstOrDefault(u => u.Email == request.Email);
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginRequest request)
+        {
+            // 1. Find user
+            var user = await _db.Users
+                .FirstOrDefaultAsync(u => u.Email == request.Email && u.IsVerified);
 
             if (user == null)
-                return Unauthorized("Invalid credentials.");
+                return BadRequest(new { Message = "Invalid email or password" });
 
+            // 2. Verify password
             if (!user.VerifyPass(request.Password))
-                return Unauthorized("Invalid credentials.");
+                return BadRequest(new { Message = "Invalid email or password" });
 
-            if (user.IsBanned)
-                return Forbid("This account is banned.");
+            // 3. Generate JWT token
+            var token = _jwtService.GenerateToken(user.Id, user.Email, user.Role);
 
-            // Update last login time
-            user.LastLogin = DateTime.UtcNow;
-            _db.SaveChanges();
-
-
-            return Ok(user);
+            // 4. Return token
+            return Ok(new
+            {
+                Success = true,
+                Token = token,
+                User = new
+                {
+                    user.Id,
+                    user.Email,
+                    user.FirstName,
+                    user.LastName,
+                    user.Role
+                }
+            });
         }
 
         [HttpPost("verify-email")]
-
-        public ActionResult VerifyEmail([FromBody] VerifyEmailRequest request)
+        public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request)
         {
-            var user = _db.Users.FirstOrDefault(u => u.Email == request.Email);
-            if (user == null)
-                return NotFound("User not found");
+            // 1. Find pending user
+            var pendingUser = await _db.PendingUsers
+                .FirstOrDefaultAsync(u => u.Email == request.Email);
 
-            if (user.IsVerified)
-                return BadRequest("User already verified");
+            if (pendingUser == null)
+                return BadRequest(new { Message = "No pending registration found" });
 
-            if (user.VerificationCode != request.Code || user.VerificationCodeExpiry < DateTime.UtcNow)
-                return BadRequest("Invalid or expired code");
+            // 2. Check if code expired
+            if (pendingUser.VerificationCodeExpiry < DateTime.UtcNow)
+            {
+                _db.PendingUsers.Remove(pendingUser);
+                await _db.SaveChangesAsync();
+                return BadRequest(new { Message = "Verification code expired. Please register again." });
+            }
 
-            user.IsVerified = true;
-            user.VerificationCode = null;
-            user.VerificationCodeExpiry = null;
+            // 3. Verify code
+            if (pendingUser.VerificationCode != request.Code)
+                return BadRequest(new { Message = "Invalid verification code" });
 
-            _db.SaveChanges();
+            // 4. Create user from pending user (no double-hashing!)
+            var newUser = Models.User.CreateFromPendingUser(pendingUser);
 
-            return Ok(new { Message = "Email verified successfully. You can now log in." });
+            await _db.Users.AddAsync(newUser);
+
+            // 5. Delete from pending users
+            _db.PendingUsers.Remove(pendingUser);
+
+            await _db.SaveChangesAsync();
+
+            // 6. Generate JWT token
+            var token = _jwtService.GenerateToken(newUser.Id, newUser.Email, newUser.Role);
+
+            // 7. Return success with token
+            return Ok(new
+            {
+                Success = true,
+                Token = token,
+                Message = "Email verified successfully"
+            });
+        }
+
+        [HttpPost("resend-code")]
+        public async Task<IActionResult> ResendCode([FromBody] ResendRequest request)
+        {
+            // 1. Find pending user
+            var pendingUser = await _db.PendingUsers
+                .FirstOrDefaultAsync(u => u.Email == request.Email);
+
+            if (pendingUser == null)
+                return BadRequest(new { Message = "No pending registration found" });
+
+            // 2. Generate new code
+            var newCode = new Random().Next(100000, 999999).ToString();
+
+            // 3. Update pending user
+            pendingUser.VerificationCode = newCode;
+            pendingUser.VerificationCodeExpiry = DateTime.UtcNow.AddMinutes(15);
+
+            await _db.SaveChangesAsync();
+
+            // 4. Send new email
+            await _emailService.SendEmailConfirmation(request.Email, newCode);
+
+            return Ok(new { Success = true, Message = "New code sent" });
         }
     }
 }

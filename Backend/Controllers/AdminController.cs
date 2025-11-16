@@ -107,5 +107,16 @@ namespace Backend.Controllers
         }
 
 
+        [HttpDelete("nuke-database")]
+
+        public ActionResult NukeDatabase()
+        {
+            _db.Products.RemoveRange(_db.Products);
+            _db.Users.RemoveRange(_db.Users);
+            _db.SaveChanges();
+            return Ok(new { Message = "Database nuked successfully." });
+        }
+
+
     }
 }
